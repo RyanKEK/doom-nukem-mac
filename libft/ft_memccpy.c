@@ -1,12 +1,12 @@
 /* ************************************************************************** */
 /*                                                                            */
 /*                                                        :::      ::::::::   */
-/*   ft_memcpy.c                                        :+:      :+:    :+:   */
+/*   memccpy.c                                          :+:      :+:    :+:   */
 /*                                                    +:+ +:+         +:+     */
-/*   By: ohavryle <marvin@42.fr>                    +#+  +:+       +#+        */
+/*   By: tbujalo <marvin@42.fr>                     +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
-/*   Created: 2018/10/24 15:20:50 by ohavryle          #+#    #+#             */
-/*   Updated: 2018/11/05 18:01:26 by ohavryle         ###   ########.fr       */
+/*   Created: 2018/10/29 18:13:17 by tbujalo           #+#    #+#             */
+/*   Updated: 2018/10/29 19:21:15 by tbujalo          ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -14,13 +14,14 @@
 
 void	*ft_memccpy(void *dst, const void *src, int c, size_t n)
 {
-	while (n-- > 0)
-	{
-		*(unsigned char*)dst++ = *(unsigned char*)src++;
-		if (*(unsigned char*)(src - 1) == (unsigned char)c)
-			break ;
-	}
-	if ((int)n == -1)
-		return (NULL);
-	return (dst);
+	char			*d;
+	unsigned char	*s;
+
+	d = dst;
+	s = (unsigned char*)src;
+	if (n)
+		while (n--)
+			if ((*d++ = *s++) == (char)c)
+				return (d);
+	return (NULL);
 }

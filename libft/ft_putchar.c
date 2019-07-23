@@ -3,40 +3,16 @@
 /*                                                        :::      ::::::::   */
 /*   ft_putchar.c                                       :+:      :+:    :+:   */
 /*                                                    +:+ +:+         +:+     */
-/*   By: ohavryle <marvin@42.fr>                    +#+  +:+       +#+        */
+/*   By: tbujalo <marvin@42.fr>                     +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
-/*   Created: 2018/10/24 14:58:13 by ohavryle          #+#    #+#             */
-/*   Updated: 2018/11/07 18:40:30 by ohavryle         ###   ########.fr       */
+/*   Created: 2018/10/28 18:30:00 by tbujalo           #+#    #+#             */
+/*   Updated: 2018/10/29 14:54:07 by tbujalo          ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
 #include "libft.h"
 
-static void	print_char(char c)
+void	ft_putchar(char c)
 {
-	write(1, &c, 1);
-}
-
-void		ft_putchar(unsigned int c)
-{
-	if (c < 128)
-		print_char(c);
-	else if (c < 2048)
-	{
-		print_char((c >> 6) + 192);
-		print_char((c & 63) + 128);
-	}
-	else if (c < 65536)
-	{
-		print_char((c >> 12) + 224);
-		print_char(((c >> 6) & 63) + 128);
-		print_char((c & 63) + 128);
-	}
-	else if (c < 2097152)
-	{
-		print_char((c >> 18) + 240);
-		print_char(((c >> 12) & 63) + 128);
-		print_char(((c >> 6) & 63) + 128);
-		print_char((c & 63) + 128);
-	}
+	ft_putchar_fd(c, 1);
 }

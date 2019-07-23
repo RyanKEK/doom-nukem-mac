@@ -1,30 +1,32 @@
 /* ************************************************************************** */
 /*                                                                            */
 /*                                                        :::      ::::::::   */
-/*   ft_strrev.c                                        :+:      :+:    :+:   */
+/*   strrev.c                                           :+:      :+:    :+:   */
 /*                                                    +:+ +:+         +:+     */
-/*   By: ohavryle <marvin@42.fr>                    +#+  +:+       +#+        */
+/*   By: tbujalo <marvin@42.fr>                     +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
-/*   Created: 2018/11/05 21:57:38 by ohavryle          #+#    #+#             */
-/*   Updated: 2018/11/05 22:19:02 by ohavryle         ###   ########.fr       */
+/*   Created: 2018/11/05 16:13:58 by tbujalo           #+#    #+#             */
+/*   Updated: 2018/11/05 17:35:34 by tbujalo          ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
-#include "libft.h"
-
-char	*ft_strrev(char *str, int n)
+char	*ft_strrev(char *str)
 {
-	char	tmp;
 	int		i;
-	int		len;
+	int		j;
+	char	k;
 
-	i = -1 + n;
-	len = ft_strlen(str);
-	while (++i < --len)
+	i = 0;
+	j = 0;
+	while (str[i])
+		i++;
+	while (j < i - 1)
 	{
-		tmp = str[i];
-		str[i] = str[len];
-		str[len] = tmp;
+		k = str[j];
+		str[j] = str[i - 1];
+		str[i - 1] = k;
+		i--;
+		j++;
 	}
 	return (str);
 }

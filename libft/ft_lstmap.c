@@ -3,46 +3,30 @@
 /*                                                        :::      ::::::::   */
 /*   ft_lstmap.c                                        :+:      :+:    :+:   */
 /*                                                    +:+ +:+         +:+     */
-/*   By: ohavryle <marvin@42.fr>                    +#+  +:+       +#+        */
+/*   By: tbujalo <marvin@42.fr>                     +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
-/*   Created: 2018/11/02 16:01:00 by ohavryle          #+#    #+#             */
-/*   Updated: 2018/11/02 19:06:37 by ohavryle         ###   ########.fr       */
+/*   Created: 2018/11/01 19:12:08 by tbujalo           #+#    #+#             */
+/*   Updated: 2018/11/02 14:05:02 by tbujalo          ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
 #include "libft.h"
 
-static	t_list	*list_clear(t_list *list)
+t_list		*ft_lstmap(t_list *lst, t_list *(*f)(t_list *elem))
 {
-	t_list		*tmp;
+	t_list	*ret;
+	t_list	*list;
 
-	while (list)
-	{
-		tmp = list->next;
-		free(list->content);
-		free(list);
-		list = tmp;
-	}
-	return (NULL);
-}
-
-t_list			*ft_lstmap(t_list *lst, t_list *(*f)(t_list *elem))
-{
-	t_list		*list;
-	t_list		*head;
-
-	if (lst == NULL || f == NULL)
+	if (!lst)
 		return (NULL);
-	if ((list = f(lst)) == NULL)
-		return (NULL);
-	head = list;
-	lst = lst->next;
-	while (lst)
+	list = f(lst);
+	ret = list;
+	while (lst->next)
 	{
-		if ((list->next = f(lst)) == NULL)
-			return (list_clear(head));
-		list = list->next;
 		lst = lst->next;
+		if (!(list->next = f(lst)))
+			return (NULL);
+		list = list->next;
 	}
-	return (head);
+	return (ret);
 }

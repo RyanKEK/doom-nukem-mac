@@ -3,63 +3,73 @@
 /*                                                        :::      ::::::::   */
 /*   ft_strsplit.c                                      :+:      :+:    :+:   */
 /*                                                    +:+ +:+         +:+     */
-/*   By: ohavryle <marvin@42.fr>                    +#+  +:+       +#+        */
+/*   By: tbujalo <marvin@42.fr>                     +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
-/*   Created: 2018/10/27 17:10:05 by ohavryle          #+#    #+#             */
-/*   Updated: 2018/11/01 15:13:00 by ohavryle         ###   ########.fr       */
+/*   Created: 2018/10/30 17:00:13 by tbujalo           #+#    #+#             */
+/*   Updated: 2018/11/09 15:55:47 by tbujalo          ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
 #include "libft.h"
 
-static	char	**arrcrt(char **arr, const char *s, char c)
+static int	w_c(const char *s, char c)
 {
-	int			i;
-	int			n;
+	int		wc;
 
-	n = 0;
+	wc = 0;
 	while (*s)
 	{
-		i = 0;
-		while (s[i] && s[i] != c)
-			i++;
-		if (i > 0)
+		if (*s == c)
+			s++;
+		else
 		{
-			if (!(arr[n] = (char*)malloc(sizeof(char) * i + 1)))
-				return (NULL);
-			i = 0;
-			while (*s && *s != c)
-				arr[n][i++] = *s++;
-			arr[n++][i] = '\0';
-			s--;
+			wc++;
+			while (*s != c && *s)
+				s++;
 		}
-		s++;
 	}
-	arr[n] = 0;
-	return (arr);
+	return (wc);
 }
 
-char			**ft_strsplit(char const *s, char c)
+static char	*get_word(const char *str, int *si, int end)
 {
-	int			n;
-	int			i;
-	char		**arr;
+	char	*ret;
+	int		i;
+	int		size;
 
-	if (s == 0)
-		return (0);
+	size = *si;
 	i = 0;
-	n = 0;
-	while (s[i])
-	{
-		if (s[i + 1] == c || s[i + 1] == '\0')
-			n++;
-		i++;
-	}
-	if (!(arr = (char**)malloc(sizeof(char*) * n + 1)))
+	ret = (char*)malloc(sizeof(char) * size + 1);
+	while (size)
+		ret[i++] = str[end - size--];
+	ret[i] = '\0';
+	*si = 0;
+	return (ret);
+}
+
+char		**ft_strsplit(char const *s, char c)
+{
+	char	**array;
+	int		i;
+	int		j;
+	int		lenw;
+
+	j = 0;
+	lenw = 0;
+	i = 0;
+	if (!s || !c || !(array = (char**)malloc(sizeof(char*) * w_c(s, c) + 1)))
 		return (NULL);
-	if (arrcrt(arr, s, c) == NULL)
-		while (*arr)
-			ft_memdel((void**)&*arr++);
-	arr = arrcrt(arr, s, c);
-	return (arr);
+	while (s[i] && j < w_c(s, c))
+	{
+		while (s[i] == c && s[i])
+			i++;
+		while (s[i] != c && s[i])
+		{
+			i++;
+			lenw++;
+		}
+		array[j++] = get_word(s, &lenw, i);
+	}
+	array[j] = 0;
+	return (array);
 }

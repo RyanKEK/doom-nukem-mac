@@ -1,46 +1,58 @@
-# **************************************************************************** #
-#                                                                              #
-#                                                         :::      ::::::::    #
-#    Makefile                                           :+:      :+:    :+:    #
-#                                                     +:+ +:+         +:+      #
-#    By: ohavryle <marvin@42.fr>                    +#+  +:+       +#+         #
-#                                                 +#+#+#+#+#+   +#+            #
-#    Created: 2019/06/16 13:16:35 by ohavryle          #+#    #+#              #
-#    Updated: 2019/06/16 13:16:37 by ohavryle         ###   ########.fr        #
-#                                                                              #
-# **************************************************************************** #
+NAME := doom-nukem
 
-CC = gcc
+SRCS	:= sdl_worker.c sdl_create.c sdl_exit.c sdl_texture.c img_loader.c ttf_worker.c main3.c line.c
 
-NAME = doom-nukem
+DIR_SRC := $(CURDIR)/src
+DIR_OBJ := $(CURDIR)/obj
 
-SRC = src/main.c src/get_next_line.c
+OBJS := $(SRCS:.c=.o)
 
-OBJ = src/main.o src/get_next_line.o
+OBJS := $(addprefix $(DIR_OBJ)/, $(OBJS))
+SRCS := $(addprefix $(DIR_SRC)/, $(SRCS))
 
-INC = includes/doom-nukem.h includes/get_next_line.h
+CC := clang
 
-CFLAGS = -Wall -Wextra -Werror -O2
+SDL_INCL =	-I $(CURDIR)/frameworks/SDL2.framework/Headers/ \
+			-I $(CURDIR)/frameworks/SDL2_mixer.framework/Headers \
+			-I $(CURDIR)/frameworks/SDL2_ttf.framework/Headers/ \
+			-I $(CURDIR)/frameworks/SDL2_image.framework/Headers/
 
-.PHONY : all re lib clean fclean
+FLAG_W = -Wall -Wextra -Werror
 
-all: lib $(NAME)
+FLAG_W = 
 
-$(NAME): $(OBJ) ./libft/libft.a 
-	$(CC) -o $(NAME) -I includes/get_next_line.h -I includes/doom-nukem.h -I/usr/local/include -I libft/include $(OBJ) -L libft/  -lft -L /Users/ohavryle/.brew/Cellar/sdl2/2.0.9_1/lib -lSDL2
+FLAG_F = -F frameworks
 
-./src/%.o: ./src/%.c $(INC)
-	$(CC) $(CFLAGS) -I includes/wolf3d.h -I includes/get_next_line.h -o  $@ -c $<
+LFT_INCL = -I libft/
 
-lib: 
-	@$(MAKE) -C libft all
+LIBFT_A = libft/libft.a
+
+SDL_RUN_FLAGS = -rpath frameworks -framework SDL2 -framework SDL2_mixer -framework SDL2_image -framework SDL2_ttf
+
+all: $(NAME)
+
+$(LIBFT_A):
+	@make -C libft/
+
+$(DIR_OBJ):
+	@mkdir -p $(DIR_OBJ)
+
+$(NAME): $(LIBFT_A) $(OBJS)
+	$(CC) -g $(OBJS) $(FLAG_F) $(SDL_RUN_FLAGS) -L libft -lft -o $(NAME)
+
+
+$(DIR_OBJ)/%.o: $(DIR_SRC)/%.c | $(DIR_OBJ)
+	$(CC) -g $(FLAG_W) -pthread  $(FLAG_F) $(SDL_INCL) $(LFT_INCL) -c $< -o $@
 
 clean:
-	@$(MAKE) -C libft clean
-	rm -f $(OBJ)
+	@make -C libft/ clean
+	/bin/rm -rf $(OBJS)
+	/bin/rm -rf $(DIR_OBJ)
 
 fclean: clean
-	@$(MAKE) -C libft fclean
-	rm -f $(NAME)
+	@make -C libft/ fclean
+	/bin/rm -rf $(NAME)
 
 re: fclean all
+
+.PHONY: all fclean clean re

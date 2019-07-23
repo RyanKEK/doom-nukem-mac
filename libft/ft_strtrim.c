@@ -3,37 +3,45 @@
 /*                                                        :::      ::::::::   */
 /*   ft_strtrim.c                                       :+:      :+:    :+:   */
 /*                                                    +:+ +:+         +:+     */
-/*   By: ohavryle <marvin@42.fr>                    +#+  +:+       +#+        */
+/*   By: tbujalo <marvin@42.fr>                     +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
-/*   Created: 2018/10/27 14:55:43 by ohavryle          #+#    #+#             */
-/*   Updated: 2018/11/05 19:26:50 by ohavryle         ###   ########.fr       */
+/*   Created: 2018/10/30 15:36:30 by tbujalo           #+#    #+#             */
+/*   Updated: 2018/10/30 16:44:18 by tbujalo          ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
 #include "libft.h"
 
+static int	is_space(char c)
+{
+	if (c == ' ' || c == '\n' || c == '\t')
+		return (1);
+	return (0);
+}
+
 char		*ft_strtrim(char const *s)
 {
 	char	*str;
-	int		i;
-	int		len;
+	int		max;
+	int		min;
+	int		p;
 
+	p = 0;
+	min = 0;
 	if (!s)
 		return (NULL);
-	i = 0;
-	while (*s == ' ' || *s == '\n' || *s == '\t')
-		s++;
-	len = ft_strlen(s) - 1;
-	if (len != -1)
-		while (s[len] == ' ' || s[len] == '\n' || s[len] == '\t')
-			len--;
-	if (!(str = (char*)malloc(sizeof(char) * len + 2)))
-		return (NULL);
-	while (i <= len)
+	max = ft_strlen(s) - 1;
+	while (is_space(s[min]))
+		min++;
+	while (is_space(s[max]))
+		max--;
+	if (max < 0)
+		max = min - 1;
+	if ((str = (char*)malloc(sizeof(char) * ((max += 1) - min) + 1)))
 	{
-		str[i] = s[i];
-		i++;
+		while (min < max)
+			str[p++] = s[min++];
+		str[p] = '\0';
 	}
-	str[i] = '\0';
 	return (str);
 }

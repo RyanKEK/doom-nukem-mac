@@ -3,40 +3,38 @@
 /*                                                        :::      ::::::::   */
 /*   ft_atoi.c                                          :+:      :+:    :+:   */
 /*                                                    +:+ +:+         +:+     */
-/*   By: ohavryle <marvin@42.fr>                    +#+  +:+       +#+        */
+/*   By: tbujalo <marvin@42.fr>                     +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
-/*   Created: 2018/10/25 19:15:09 by ohavryle          #+#    #+#             */
-/*   Updated: 2019/02/12 16:04:08 by ohavryle         ###   ########.fr       */
+/*   Created: 2018/10/28 14:43:26 by tbujalo           #+#    #+#             */
+/*   Updated: 2019/01/22 21:00:57 by tbujalo          ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
 #include "libft.h"
-#define SIGN {sign -= *str; str++;}
 
-int						ft_atoi(const char *str)
+int		ft_atoi(const char *nbr)
 {
-	unsigned long int	res;
-	int					sign;
+	int		m;
+	int		c;
+	int		res;
 
-	sign = 44;
+	m = 1;
 	res = 0;
-	while (*str == ' ' || *str == '\n' || *str == '\t'
-			|| *str == '\v' || *str == '\r' || *str == '\f')
-		str++;
-	if (*str == '-' || *str == '+')
+	c = 0;
+	while (*nbr == ' ' || *nbr == '\t' || *nbr == '\f' ||
+			*nbr == '\r' || *nbr == '\n' || *nbr == '\v')
+		nbr++;
+	if (*nbr == '-' || *nbr == '+')
 	{
-		sign -= *str;
-		str++;
+		if (*nbr == '-')
+			m = -1;
+		nbr++;
 	}
-	else
-		sign = 1;
-	while (*str > 47 && *str < 58)
-	{
-		res = res * 10 + *str++ - 48;
-		if (res >= 9223372036854775807 && sign == 1)
-			return (-1);
-		else if (res > 9223372036854775807 && sign == -1)
-			return (0);
-	}
-	return ((int)(res * sign));
+	while (*nbr >= '0' && *nbr <= '9' && c++ < 19)
+		res = (res * 10) + (*nbr++ - '0');
+	if (c >= 19)
+		res = -1;
+	if (c >= 19 && m == -1)
+		res = 0;
+	return (res * m);
 }
