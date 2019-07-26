@@ -13,7 +13,7 @@
 static struct sector
 {
     float floor, ceil;
-    struct xy { float x,y; } *vertex; // Each vertex has an x and y coordinate
+    struct vertex { float x,y,ceilz, floorz; } *vertex; // Each vertex has an x and y coordinate
     signed char *neighbors;           // Each edge may have a corresponding neighboring sector
     unsigned npoints;                 // How many vertexes there are
 } *sectors = NULL;
@@ -42,23 +42,28 @@ static struct player
 // PointSide: Determine which side of a line the point is on. Return value: <0, =0 or >0.
 #define PointSide(px,py, x0,y0, x1,y1) vxs((x1)-(x0), (y1)-(y0), (px)-(x0), (py)-(y0))
 // Intersect: Calculate the point of intersection between two lines.
-#define Intersect(x1,y1, x2,y2, x3,y3, x4,y4) ((struct xy) { \
+#define Intersect(x1,y1, x2,y2, x3,y3, x4,y4) ((struct vertex) { \
     vxs(vxs(x1,y1, x2,y2), (x1)-(x2), vxs(x3,y3, x4,y4), (x3)-(x4)) / vxs((x1)-(x2), (y1)-(y2), (x3)-(x4), (y3)-(y4)), \
     vxs(vxs(x1,y1, x2,y2), (y1)-(y2), vxs(x3,y3, x4,y4), (y3)-(y4)) / vxs((x1)-(x2), (y1)-(y2), (x3)-(x4), (y3)-(y4)) })
+#define dtor(a)         (a * 0.0174533)
+#define rtod(a)         (a * 57.2958)
 
 static void ReloadData()
 {
     FILE* fp = fopen("quad.map", "rt");
     if(!fp) { perror("quad.map"); exit(1); }
     char Buf[256], word[256], *ptr;
-    struct xy* vert = NULL, v;
+    struct vertex* vert = NULL, v;
     int n, m, NumVertices = 0;
     while(fgets(Buf, sizeof Buf, fp))
         switch(sscanf(ptr = Buf, "%32s%n", word, &n) == 1 ? word[0] : '\0')
         {
             case 'v': // vertex
-                for(sscanf(ptr += n, "%f%n", &v.y, &n); sscanf(ptr += n, "%f%n", &v.x, &n) == 1; )
-                    { vert = realloc(vert, ++NumVertices * sizeof(*vert)); vert[NumVertices-1] = v; }
+                for(sscanf(ptr += n, "%f%n", &v.y, &n); sscanf(ptr += n, "%f%n", &v.x, &n) == 1;){
+                    sscanf(ptr += n, "%f%n", &v.ceilz, &n);
+                    sscanf(ptr += n, "%f%n", &v.floorz, &n);
+                    vert = realloc(vert, ++NumVertices * sizeof(*vert)); vert[NumVertices-1] = v;
+                }
                 break;
             case 's': // sector
                 sectors = realloc(sectors, ++NumSectors * sizeof(*sectors));
@@ -85,14 +90,18 @@ static void LoadData()
     FILE* fp = fopen("quad.map", "rt");
     if(!fp) { perror("quad.map"); exit(1); }
     char Buf[256], word[256], *ptr;
-    struct xy* vert = NULL, v;
+    struct vertex* vert = NULL, v;
     int n, m, NumVertices = 0;
     while(fgets(Buf, sizeof Buf, fp))
         switch(sscanf(ptr = Buf, "%32s%n", word, &n) == 1 ? word[0] : '\0')
         {
             case 'v': // vertex
-                for(sscanf(ptr += n, "%f%n", &v.y, &n); sscanf(ptr += n, "%f%n", &v.x, &n) == 1; )
-                    { vert = realloc(vert, ++NumVertices * sizeof(*vert)); vert[NumVertices-1] = v; }
+                //printf("%sn:%d\n", ptr + n, n);
+                for(sscanf(ptr += n, "%f%n", &v.y, &n); sscanf(ptr += n, "%f%n", &v.x, &n) == 1;){
+                    sscanf(ptr += n, "%f%n", &v.ceilz, &n);
+                    sscanf(ptr += n, "%f%n", &v.floorz, &n);
+                    vert = realloc(vert, ++NumVertices * sizeof(*vert)); vert[NumVertices-1] = v;
+                }
                 break;
             case 's': // sector
                 sectors = realloc(sectors, ++NumSectors * sizeof(*sectors));
@@ -161,7 +170,7 @@ static void MovePlayer(float dx, float dy)
      * that is outside the sector and 0 or 1 for a point that is inside.
      */
     const struct sector* const sect = &sectors[player.sector];
-    const struct xy* const vert = sect->vertex;
+    const struct vertex* const vert = sect->vertex;
     for(unsigned s = 0; s < sect->npoints; ++s)
         if(sect->neighbors[s] >= 0
         && IntersectBox(px,py, px+dx,py+dy, vert[s+0].x, vert[s+0].y, vert[s+1].x, vert[s+1].y)
@@ -170,14 +179,13 @@ static void MovePlayer(float dx, float dy)
             player.sector = sect->neighbors[s];
             break;
         }
-
     player.where.x += dx;
     player.where.y += dy;
     player.anglesin = sinf(player.angle);
     player.anglecos = cosf(player.angle);
 }
 
-static void DrawScreen()
+static void DrawScreen(t_sdl *sdl)
 {
     enum { MaxQueue = 32 };  // maximum number of pending portal renders
     struct item { int sectorno,sx1,sx2; } queue[MaxQueue], *head=queue, *tail=queue;
@@ -201,12 +209,18 @@ static void DrawScreen()
     for(unsigned s = 0; s < sect->npoints; ++s)
     {
         /* Acquire the x,y coordinates of the two endpoints (vertices) of this edge of the sector */
-        float vx1 = sect->vertex[s+0].x - player.where.x, vy1 = sect->vertex[s+0].y - player.where.y;
+       // printf("angle%f  cos:%f   sin:%f\n", player.angle, player.anglecos, player.anglesin);
+        SDL_Texture *text;
+        float vx1 = sect->vertex[s].x - player.where.x, vy1 = sect->vertex[s].y - player.where.y;
         float vx2 = sect->vertex[s+1].x - player.where.x, vy2 = sect->vertex[s+1].y - player.where.y;
+
         /* Rotate them around the player's view */
         float pcos = player.anglecos, psin = player.anglesin;
+        //printf("vx1:%f\nvy1:%f\n", vx1, vy1);
         float tx1 = vx1 * psin - vy1 * pcos,  tz1 = vx1 * pcos + vy1 * psin;
         float tx2 = vx2 * psin - vy2 * pcos,  tz2 = vx2 * pcos + vy2 * psin;
+        //printf("tx1:%f\nty1:%f\n", tx1, tz1);
+        //printf("angle:%f\n", rtod(player.angle));
         /* Is the wall at least partially in front of the player? */
         if(tz1 <= 0 && tz2 <= 0) continue;
         /* If it's partially behind the player, clip it against player's view frustrum */
@@ -214,13 +228,13 @@ static void DrawScreen()
         {
             float nearz = 1e-4f, farz = 5, nearside = 1e-5f, farside = 20.f;
             // Find an intersection between the wall and the approximate edges of player's view
-            struct xy i1 = Intersect(tx1,tz1,tx2,tz2, -nearside,nearz, -farside,farz);
-            struct xy i2 = Intersect(tx1,tz1,tx2,tz2,  nearside,nearz,  farside,farz);
+            struct vertex i1 = Intersect(tx1,tz1,tx2,tz2, -nearside,nearz, -farside,farz);
+            struct vertex i2 = Intersect(tx1,tz1,tx2,tz2,  nearside,nearz,  farside,farz);
             if(tz1 < nearz) { if(i1.y > 0) { tx1 = i1.x; tz1 = i1.y; } else { tx1 = i2.x; tz1 = i2.y; } }
             if(tz2 < nearz) { if(i1.y > 0) { tx2 = i1.x; tz2 = i1.y; } else { tx2 = i2.x; tz2 = i2.y; } }
         }
         /* Do perspective transformation */
-        float xscale1 = hfov / tz1, yscale1 = vfov / tz1;    int x1 = W/2 - (int)(tx1 * xscale1);
+        float xscale1 = hfov / tz1, yscale1 = vfov / tz1;    int x1 = W/2 - (tx1 * xscale1);
         float xscale2 = hfov / tz2, yscale2 = vfov / tz2;    int x2 = W/2 - (int)(tx2 * xscale2);
         if(x1 >= x2 || x2 < now.sx1 || x1 > now.sx2) continue; // Only render if it's visible
         /* Acquire the floor and ceiling heights, relative to where the player's view is */
@@ -236,12 +250,11 @@ static void DrawScreen()
         }
         /* Project our ceiling & floor heights into screen coordinates (Y coordinate) */
         #define Yaw(y,z) (y + z*player.yaw)
-        int y1a  = H/2 - (int)(Yaw(yceil, tz1) * yscale1),  y1b = H/2 - (int)(Yaw(yfloor, tz1) * yscale1);
-        int y2a  = H/2 - (int)(Yaw(yceil, tz2) * yscale2),  y2b = H/2 - (int)(Yaw(yfloor, tz2) * yscale2);
+        int y1a  = H/2 - (int)(Yaw(yceil + sect->vertex[s].ceilz, tz1) * yscale1),  y1b = H/2 - (int)(Yaw(yfloor + sect->vertex[s].floorz, tz1) * yscale1);
+        int y2a  = H/2 - (int)(Yaw(yceil + sect->vertex[s + 1].ceilz, tz2) * yscale2),  y2b = H/2 - (int)(Yaw(yfloor + sect->vertex[s + 1].floorz, tz2) * yscale2);
         /* The same for the neighboring sector */
-        int ny1a = H/2 - (int)(Yaw(nyceil, tz1) * yscale1), ny1b = H/2 - (int)(Yaw(nyfloor, tz1) * yscale1);
-        int ny2a = H/2 - (int)(Yaw(nyceil, tz2) * yscale2), ny2b = H/2 - (int)(Yaw(nyfloor, tz2) * yscale2);
-
+        int ny1a = H/2 - (int)(Yaw(nyceil + sect->vertex[s].ceilz, tz1) * yscale1), ny1b = H/2 - (int)(Yaw(nyfloor + sect->vertex[s].floorz, tz1) * yscale1);
+        int ny2a = H/2 - (int)(Yaw(nyceil + sect->vertex[s + 1].ceilz, tz2) * yscale2), ny2b = H/2 - (int)(Yaw(nyfloor+ sect->vertex[s + 1].floorz, tz2) * yscale2);
         /* Render the wall. */
         int beginx = max(x1, now.sx1), endx = min(x2, now.sx2);
         for(int x = beginx; x <= endx; ++x)
@@ -253,9 +266,9 @@ static void DrawScreen()
             int yb = (x - x1) * (y2b-y1b) / (x2-x1) + y1b, cyb = clamp(yb, ytop[x],ybottom[x]); // bottom
 
             /* Render ceiling: everything above this sector's ceiling height. */
-            vline(x, ytop[x], cya-1, 0x111111 ,0x222222,0x111111);
+            vline(x, ytop[x], cya-1, 0xFF ,0x222222, 0xFF);
             /* Render floor: everything below this sector's floor height. */
-            vline(x, cyb+1, ybottom[x], 0x0000FF,0x0000AA,0x00FFFF);
+            vline(x, cyb+1, ybottom[x], 0xFF,0x222222, 0xFF);
 
             /* Is there another sector behind this edge? */
             if(neighbor >= 0)
@@ -277,6 +290,13 @@ static void DrawScreen()
                 unsigned r = 0x010101 * (255-z);
                 vline(x, cya, cyb, 0, x==x1||x==x2 ? 0 : r, 0);
             }
+            if (cya == 0 && cyb == H - 1)
+            {
+                //printf("yscale1:%f\ntz1:%f\nvx1:%f\npcos:%f\nvy1:%f\npsin:%f\n", yscale1, tz1, vx1, pcos, vy1, psin);
+            }
+            //  else{
+            //      printf("normal yscale1:%f\n yscale2:%f\nya:%d\nyb:%d\n", yscale1, yscale2, ya, yb);
+            //  }
         }
         /* Schedule the neighboring sector for rendering within the window formed by this wall. */
         if(neighbor >= 0 && endx >= beginx && (head+MaxQueue+1-tail)%MaxQueue)
@@ -308,7 +328,7 @@ int main()
     SDL_Texture *recttext = load_texture("023.png", sdl->ren);
     for(;;)
     {
-        DrawScreen();
+        DrawScreen(sdl);
         //quad(surface, player.where.x * scale, player.where.y * scale, 10, 10, 0x0000FF);
         for (int i = 0; i < NumSectors; i++)
         {
@@ -326,13 +346,13 @@ int main()
                 }
             }
         }
-        //printf("x:%f\ny:%f\n", player.where.x, player.where.y);
         text = SDL_CreateTextureFromSurface(sdl->ren, surface);
         SDL_RenderClear(sdl->ren);
         SDL_Rect rect = {18 * scale - player.where.y * scale, player.where.x * scale, 20, 20};
         SDL_RenderCopy(sdl->ren, text, NULL, NULL);
         SDL_RenderCopy(sdl->ren, recttext, NULL, &rect);
         SDL_RenderPresent(sdl->ren);
+        SDL_DestroyTexture(text);
         /* Vertical collision detection */
         float eyeheight = ducking ? DuckHeight : EyeHeight;
         ground = !falling;
@@ -367,7 +387,7 @@ int main()
             float dx = player.velocity.x, dy = player.velocity.y;
 
             const struct sector* const sect = &sectors[player.sector];
-            const struct xy* const vert = sect->vertex;
+            const struct vertex* const vert = sect->vertex;
             /* Check if the player is about to cross one of the sector's edges */
             for(unsigned s = 0; s < sect->npoints; ++s)
                 if(IntersectBox(px,py, px+dx,py+dy, vert[s+0].x, vert[s+0].y, vert[s+1].x, vert[s+1].y)
@@ -405,11 +425,11 @@ int main()
                         case 'a': wsad[2] = ev.type==SDL_KEYDOWN; break;
                         case 'd': wsad[3] = ev.type==SDL_KEYDOWN; break;
                         case SDLK_ESCAPE: goto done;
+                        case SDLK_LCTRL: player.where.z += 3; break;
                         case 'r':     UnloadData(); ReloadData(); break;
                         case ' ': /* jump */
                             if(ground) { player.velocity.z += 0.5; falling = 1; }
                             break;
-                        case SDLK_LCTRL: /* duck */
                         case SDLK_RCTRL: ducking = ev.type==SDL_KEYDOWN; falling=1; break;
                         default: break;
                     }
@@ -421,8 +441,8 @@ int main()
         int x,y;
         SDL_GetRelativeMouseState(&x,&y);
         y = -y;
-        player.angle += x * 0.008f;
-        yaw          = clamp(yaw - y*0.05f, -5, 5);
+        player.angle += x * 0.01;
+        yaw          = clamp(yaw - y * 0.05f, -5, 5);
         player.yaw   = yaw - player.velocity.z*0.5f;
         MovePlayer(0,0);
 
@@ -438,8 +458,6 @@ int main()
         player.velocity.y = player.velocity.y * (1-acceleration) + move_vec[1] * acceleration;
 
         if(pushing) moving = 1;
-
-        SDL_Delay(10);
     }
 done:
     UnloadData();
