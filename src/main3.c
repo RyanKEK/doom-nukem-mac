@@ -9,6 +9,7 @@
 #define hfov (0.73f*H)  // Affects the horizontal field of vision
 #define vfov (.2f*H)    // Affects the vertical field of vision
 #define scale 20
+
 /* Sectors: Floor and ceiling height; list of edge vertices and neighbors */
 static struct sector
 {
@@ -19,6 +20,9 @@ static struct sector
 } *sectors = NULL;
 static unsigned NumSectors = 0;
 
+#define Scaler_Init(a,b,c,d,f) \
+    { d + (b-1 - a) * (f-d) / (c-a), ((f<d) ^ (c<a)) ? -1 : 1, \
+      abs(f-d), abs(c-a), (int)((b-1-a) * abs(f-d)) % abs(c-a) }
 /* Player: location */
 static struct player
 {
@@ -33,7 +37,7 @@ static struct player
 // implement these functions that work with multiple types.
 #define min(a,b)             (((a) < (b)) ? (a) : (b)) // min: Choose smaller of two scalars.
 #define max(a,b)             (((a) > (b)) ? (a) : (b)) // max: Choose greater of two scalars.
-#define clamp(a, mi,ma)      min(max(a,mi),ma)         // clamp: Clamp value into set range.
+#define clamp(a, mi,ma)      min(max(a,mi),ma)
 #define vxs(x0,y0, x1,y1)    ((x0)*(y1) - (x1)*(y0))   // vxs: Vector cross product
 // Overlap:  Determine whether the two number ranges overlap.
 #define Overlap(a0,a1,b0,b1) (min(a0,a1) <= max(b0,b1) && min(b0,b1) <= max(a0,a1))
@@ -47,11 +51,15 @@ static struct player
     vxs(vxs(x1,y1, x2,y2), (y1)-(y2), vxs(x3,y3, x4,y4), (y3)-(y4)) / vxs((x1)-(x2), (y1)-(y2), (x3)-(x4), (y3)-(y4)) })
 #define dtor(a)         (a * 0.0174533)
 #define rtod(a)         (a * 57.2958)
+#define distance(x1, y1 ,x2, y2) (sqrtf((x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1)))
 
+char *map;
+SDL_Surface *imageSrf;
+SDL_Surface *floorTexture;
 static void ReloadData()
 {
-    FILE* fp = fopen("quad.map", "rt");
-    if(!fp) { perror("quad.map"); exit(1); }
+    FILE* fp = fopen(map, "rt");
+    if(!fp) { perror(map); exit(1); }
     char Buf[256], word[256], *ptr;
     struct vertex* vert = NULL, v;
     int n, m, NumVertices = 0;
@@ -87,8 +95,8 @@ static void ReloadData()
 
 static void LoadData()
 {
-    FILE* fp = fopen("quad.map", "rt");
-    if(!fp) { perror("quad.map"); exit(1); }
+    FILE* fp = fopen(map, "rt");
+    if(!fp) { perror(map); exit(1); }
     char Buf[256], word[256], *ptr;
     struct vertex* vert = NULL, v;
     int n, m, NumVertices = 0;
@@ -130,6 +138,46 @@ static void LoadData()
     fclose(fp);
     free(vert);
 }
+
+static void LoadDataRaw()
+{
+    FILE* fp = fopen("map-clear.txt", "rt");
+    if(!fp) { perror("map-clear.txt"); exit(1); }
+    char Buf[256], word[256], *ptr;
+    struct vertex* vert = NULL, v;
+    int n, m, NumVertices = 0;
+    while(fgets(Buf, sizeof Buf, fp))
+        switch(sscanf(ptr = Buf, "%32s%n", word, &n) == 1 ? word[0] : '\0')
+        {
+            case 'v': // vertex
+                for(sscanf(ptr += n, "%f%n", &v.y, &n); sscanf(ptr += n, "%f%n", &v.x, &n) == 1; )
+                    { vert = realloc(vert, ++NumVertices * sizeof(*vert)); vert[NumVertices-1] = v; }
+                break;
+            case 's': // sector
+                sectors = realloc(sectors, ++NumSectors * sizeof(*sectors));
+                struct sector* sect = &sectors[NumSectors-1];
+                int* num = NULL;
+                sscanf(ptr += n, "%f%f%n", &sect->floor,&sect->ceil, &n);
+                for(m=0; sscanf(ptr += n, "%32s%n", word, &n) == 1 && word[0] != '#'; )
+                    { num = realloc(num, ++m * sizeof(*num)); num[m-1] = word[0]=='x' ? -1 : atoi(word); }
+                sect->npoints   = m /= 2;
+                sect->neighbors = malloc( (m  ) * sizeof(*sect->neighbors) );
+                sect->vertex    = malloc( (m+1) * sizeof(*sect->vertex)    );
+                for(n=0; n<m; ++n) sect->neighbors[n] = num[m + n];
+                for(n=0; n<m; ++n) sect->vertex[n+1]  = vert[num[n]]; // TODO: Range checking
+                sect->vertex[0] = sect->vertex[m]; // Ensure the vertexes form a loop
+                free(num);
+                break;
+            case 'p':; // player
+                float angle;
+                sscanf(ptr += n, "%f %f %f %d", &v.x, &v.y, &angle,&n);
+                player = (struct player) { {v.x, v.y, 0}, {0,0,0}, angle,0,0,0, n }; // TODO: Range checking
+                player.where.z = sectors[player.sector].floor + EyeHeight;
+        }
+    fclose(fp);
+    free(vert);
+}
+
 static void UnloadData()
 {
     for(unsigned a=0; a<NumSectors; ++a) free(sectors[a].vertex);
@@ -185,8 +233,19 @@ static void MovePlayer(float dx, float dy)
     player.anglecos = cosf(player.angle);
 }
 
+float anglle = -0.02f;
+
+static int Scaler_Next(struct Scaler* i)
+{
+    for(i->cache += i->fd; i->cache >= i->ca; i->cache -= i->ca) i->result += i->bop;
+    return i->result;
+}
+
 static void DrawScreen(t_sdl *sdl)
 {
+    // player.where.y = 8.658625;
+    // player.where.x = 0.119110;
+    // player.angle = anglle;
     enum { MaxQueue = 32 };  // maximum number of pending portal renders
     struct item { int sectorno,sx1,sx2; } queue[MaxQueue], *head=queue, *tail=queue;
     int ytop[W]={0}, ybottom[W], renderedsectors[NumSectors];
@@ -194,7 +253,7 @@ static void DrawScreen(t_sdl *sdl)
     for(unsigned n=0; n<NumSectors; ++n) renderedsectors[n] = 0;
 
     /* Begin whole-screen rendering from where the player is. */
-    *head = (struct item) { player.sector, 365, W-1 };
+    *head = (struct item) { player.sector, 0, W-1 };
     if(++head == queue+MaxQueue) head = queue;
 
     do {
@@ -216,25 +275,29 @@ static void DrawScreen(t_sdl *sdl)
 
         /* Rotate them around the player's view */
         float pcos = player.anglecos, psin = player.anglesin;
-        //printf("vx1:%f\nvy1:%f\n", vx1, vy1);
         float tx1 = vx1 * psin - vy1 * pcos,  tz1 = vx1 * pcos + vy1 * psin;
         float tx2 = vx2 * psin - vy2 * pcos,  tz2 = vx2 * pcos + vy2 * psin;
-        //printf("tx1:%f\nty1:%f\n", tx1, tz1);
-        //printf("angle:%f\n", rtod(player.angle));
         /* Is the wall at least partially in front of the player? */
-        if(tz1 <= 0 && tz2 <= 0) continue;
+        if(tz1 <= 0 && tz2 <= 0)
+            continue;
         /* If it's partially behind the player, clip it against player's view frustrum */
+        int u0 = 0, u1 = imageSrf->w - 1;
         if(tz1 <= 0 || tz2 <= 0)
         {
             float nearz = 1e-4f, farz = 5, nearside = 1e-5f, farside = 20.f;
             // Find an intersection between the wall and the approximate edges of player's view
             struct vertex i1 = Intersect(tx1,tz1,tx2,tz2, -nearside,nearz, -farside,farz);
             struct vertex i2 = Intersect(tx1,tz1,tx2,tz2,  nearside,nearz,  farside,farz);
+            struct vertex org1 = {tx1,tz1}, org2 = {tx2,tz2};
             if(tz1 < nearz) { if(i1.y > 0) { tx1 = i1.x; tz1 = i1.y; } else { tx1 = i2.x; tz1 = i2.y; } }
             if(tz2 < nearz) { if(i1.y > 0) { tx2 = i1.x; tz2 = i1.y; } else { tx2 = i2.x; tz2 = i2.y; } }
+            if(fabsf(tx2-tx1) > fabsf(tz2-tz1))
+                u0 = (tx1-org1.x) * (imageSrf->w - 1) / (org2.x-org1.x), u1 = (tx2-org1.x) * (imageSrf->w - 1) / (org2.x-org1.x);
+            else
+                u0 = (tz1-org1.y) * (imageSrf->w - 1) / (org2.y-org1.y), u1 = (tz2-org1.y) * (imageSrf->w - 1) / (org2.y-org1.y);
         }
         /* Do perspective transformation */
-        float xscale1 = hfov / tz1, yscale1 = vfov / tz1;    int x1 = W/2 - (tx1 * xscale1);
+        float xscale1 = hfov / tz1, yscale1 = vfov / tz1;    int x1 = W/2 - (int)(tx1 * xscale1);
         float xscale2 = hfov / tz2, yscale2 = vfov / tz2;    int x2 = W/2 - (int)(tx2 * xscale2);
         if(x1 >= x2 || x2 < now.sx1 || x1 > now.sx2) continue; // Only render if it's visible
         /* Acquire the floor and ceiling heights, relative to where the player's view is */
@@ -257,20 +320,55 @@ static void DrawScreen(t_sdl *sdl)
         int ny2a = H/2 - (int)(Yaw(nyceil + sect->vertex[s + 1].ceilz, tz2) * yscale2), ny2b = H/2 - (int)(Yaw(nyfloor+ sect->vertex[s + 1].floorz, tz2) * yscale2);
         /* Render the wall. */
         int beginx = max(x1, now.sx1), endx = min(x2, now.sx2);
+        struct Scaler ya_int = Scaler_Init(x1, beginx, x2, y1a, y2a);
+        struct Scaler yb_int = Scaler_Init(x1, beginx, x2, y1b, y2b);
+        struct Scaler nya_int = Scaler_Init(x1, beginx, x2, ny1a, ny2a);
+        struct Scaler nyb_int = Scaler_Init(x1, beginx, x2, ny1b, ny2b);
+#define CeilingFloorScreenCoordinatesToMapCoordinates(mapY, screenX,screenY, X,Z) \
+    do { Z = (mapY)*H*vfov / ((H/2 - (screenY)) - player.yaw*H*vfov); \
+         X = (Z) * (W/2 - (screenX)) / (W*hfov); \
+         RelativeMapCoordinatesToAbsoluteOnes(X,Z); } while(0)
+#define RelativeMapCoordinatesToAbsoluteOnes(X,Z) \
+    do { float rtx = (Z) * pcos + (X) * psin; \
+         float rtz = (Z) * psin - (X) * pcos; \
+         X = rtx + player.where.x; Z = rtz + player.where.y; \
+    } while(0)
         for(int x = beginx; x <= endx; ++x)
         {
+            int txtx = (u0*((x2-x)*tz2) + u1*((x-x1)*tz1)) / ((x2-x)*tz2 + (x-x1)*tz1);
             /* Calculate the Z coordinate for this point. (Only used for lighting.) */
             int z = ((x - x1) * (tz2-tz1) / (x2-x1) + tz1) * 8;
             /* Acquire the Y coordinates for our ceiling & floor for this X coordinate. Clamp them. */
-            int ya = (x - x1) * (y2a-y1a) / (x2-x1) + y1a, cya = clamp(ya, ytop[x],ybottom[x]); // top
-            int yb = (x - x1) * (y2b-y1b) / (x2-x1) + y1b, cyb = clamp(yb, ytop[x],ybottom[x]); // bottom
-
+            int ya = Scaler_Next(&ya_int);
+            int yb = Scaler_Next(&yb_int);
+            /* Clamp the ya & yb */
+            int cya = clamp(ya, ytop[x],ybottom[x]);
+            int cyb = clamp(yb, ytop[x],ybottom[x]);
+            for(int y=ytop[x]; y<=ybottom[x]; ++y)
+            {
+                if(y >= cya && y <= cyb) { y = cyb; continue; }
+                float hei = y < cya ? yceil : yfloor;
+                float mapx, mapz;
+                CeilingFloorScreenCoordinatesToMapCoordinates(hei, x, y,mapx, mapz);
+                unsigned txtx = (mapx * 256), txtz = (mapz * 256);
+                //printf("%d\n%d\n", txtx, txtz);
+                int pel = ((int*)floorTexture->pixels)[txtx % floorTexture->w + (txtz % floorTexture->h) * floorTexture->w];
+                ((int*)surface->pixels)[y * W + x] = pel;
+            }
             /* Render ceiling: everything above this sector's ceiling height. */
-            vline(x, ytop[x], cya-1, 0xFF ,0x222222, 0xFF);
+            //vline(x, ytop[x], cya-1, 0xFF ,0x222222, 0xFF);
             /* Render floor: everything below this sector's floor height. */
-            vline(x, cyb+1, ybottom[x], 0xFF,0x222222, 0xFF);
-
+            //vline(x, cyb+1, ybottom[x], 0xFF,0x222222, 0xFF);
             /* Is there another sector behind this edge? */
+            // unsigned txtx, txtz;
+            // for (int y=ytop[x]; y<=ybottom[x]; ++y)
+            // {
+            //         if(y >= cya && y <= cyb) { y = cyb; continue; }
+            //         float hei = y < cya ? yceil : yfloor;
+            //         float mapx, mapz;
+            //         CeilingFloorScreenCoordinatesToMapCoordinates(hei, x, y, mapx,mapz);
+            //         txtx = (mapx * 256), txtz = (mapz * 256);
+            // }
             if(neighbor >= 0)
             {
                 /* Same for _their_ floor and ceiling */
@@ -288,11 +386,14 @@ static void DrawScreen(t_sdl *sdl)
             {
                 /* There's no neighbor. Render wall from top (cya = ceiling level) to bottom (cyb = floor level). */
                 unsigned r = 0x010101 * (255-z);
-                vline(x, cya, cyb, 0, x==x1||x==x2 ? 0 : r, 0);
-            }
-            if (cya == 0 && cyb == H - 1)
-            {
-                //printf("yscale1:%f\ntz1:%f\nvx1:%f\npcos:%f\nvy1:%f\npsin:%f\n", yscale1, tz1, vx1, pcos, vy1, psin);
+                //vline(x, cya, cyb, 0, x==x1||x==x2 ? 0 : r, 0);
+                //if (s != sect->npoints - 1)
+                    //draw_texture_line(surface, imageSrf, x, 0, distance(sect->vertex[s].x, sect->vertex[s].y, sect->vertex[s + 1].x, sect->vertex[s + 1].y) , ya, yb);
+                    textLine(x, cya, cyb, (struct Scaler)Scaler_Init(ya,cya,yb, 0,imageSrf->h), txtx, surface, imageSrf);
+                    //if (s == 1)
+                    //   printf("vx1:%f\nvx2:%f\nx1:%f\nx2:%f\n", vx1, vx2, wallx1, wallx2);
+                //else
+                //    draw_texture_line(surface, imageSrf, x, 0, distance(sect->vertex[s].x, sect->vertex[s].y, sect->vertex[0].x, sect->vertex[0].y), ya, yb);
             }
             //  else{
             //      printf("normal yscale1:%f\n yscale2:%f\nya:%d\nyb:%d\n", yscale1, yscale2, ya, yb);
@@ -309,23 +410,28 @@ static void DrawScreen(t_sdl *sdl)
     } while(head != tail); // render any other queued sectors
 }
 
-int main()
+int main(int ac, char **av)
 {
+    if (ac != 2){
+        printf("Bruh, map\n");
+        exit(1);
+    }
+    map = av[1];
     t_sdl *sdl;
     SDL_Texture *text;
     LoadData();
-
     sdl = new_t_sdl(W, H, "test");
     if (init_sdl(sdl) == ERROR)
         exit(1);
     surface = SDL_CreateRGBSurface(0, W, H, 32, 0, 0, 0, 0);
-
+    imageSrf = load_img("textures/image.jpeg");
+    floorTexture = load_img("textures/floor.jpg");
     SDL_ShowCursor(SDL_DISABLE);
     SDL_SetRelativeMouseMode(SDL_TRUE);
-
     int wsad[4]={0,0,0,0}, ground=0, falling=1, moving=0, ducking=0;
     float yaw = 0;
     SDL_Texture *recttext = load_texture("023.png", sdl->ren);
+    //SDL_Texture *imgtxt = SDL_CreateTextureFromSurface(sdl->ren, imageSrf);
     for(;;)
     {
         DrawScreen(sdl);
@@ -424,6 +530,7 @@ int main()
                         case 's': wsad[1] = ev.type==SDL_KEYDOWN; break;
                         case 'a': wsad[2] = ev.type==SDL_KEYDOWN; break;
                         case 'd': wsad[3] = ev.type==SDL_KEYDOWN; break;
+                        case 'g': anglle += 0.01f; break;
                         case SDLK_ESCAPE: goto done;
                         case SDLK_LCTRL: player.where.z += 3; break;
                         case 'r':     UnloadData(); ReloadData(); break;
