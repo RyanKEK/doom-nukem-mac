@@ -11,13 +11,7 @@
 #define scale 20
 
 /* Sectors: Floor and ceiling height; list of edge vertices and neighbors */
-static struct sector
-{
-    float floor, ceil;
-    struct vertex { float x,y,ceilz, floorz; } *vertex; // Each vertex has an x and y coordinate
-    signed char *neighbors;           // Each edge may have a corresponding neighboring sector
-    unsigned npoints;                 // How many vertexes there are
-} *sectors = NULL;
+struct sector *sectors = NULL;
 static unsigned NumSectors = 0;
 
 #define Scaler_Init(a,b,c,d,f) \
@@ -64,6 +58,7 @@ static struct player
 char *map;
 SDL_Surface *imageSrf;
 SDL_Surface *floorTexture;
+SDL_Surface *ceilTexture;
 static void ReloadData()
 {
     FILE* fp = fopen(map, "rt");
@@ -242,11 +237,18 @@ static void MovePlayer(float dx, float dy)
 }
 
 float anglle = -0.02f;
-
 static int Scaler_Next(struct Scaler* i)
 {
     for(i->cache += i->fd; i->cache >= i->ca; i->cache -= i->ca) i->result += i->bop;
     return i->result;
+}
+
+float         find_max_ceiling_height(const struct sector *const sector)
+{
+    float h;
+    for (int i = 0; i < sector->npoints - 1; i++)
+        h = max(sector->vertex[i].ceilz, sector->vertex[i + 1].ceilz);
+    return (h);
 }
 
 static void DrawScreen(t_sdl *sdl)
@@ -277,6 +279,7 @@ static void DrawScreen(t_sdl *sdl)
     {
         /* Acquire the x,y coordinates of the two endpoints (vertices) of this edge of the sector */
        // printf("angle%f  cos:%f   sin:%f\n", player.angle, player.anglecos, player.anglesin);
+        float ceiloff = find_max_ceiling_height(sect);
         SDL_Texture *text;
         double vx1 = sect->vertex[s].x - player.where.x, vy1 = sect->vertex[s].y - player.where.y;
         double vx2 = sect->vertex[s+1].x - player.where.x, vy2 = sect->vertex[s+1].y - player.where.y;
@@ -288,8 +291,9 @@ static void DrawScreen(t_sdl *sdl)
         /* Is the wall at least partially in front of the player? */
         if(tz1 <= 0 && tz2 <= 0)
             continue;
+        struct vertex orig1, orig2;
         /* If it's partially behind the player, clip it against player's view frustrum */
-        int u0 = 0, u1 = imageSrf->w - 1;
+        int u0 = 0, u1 = imageSrf->w * 2 - 1;
         if(tz1 <= 0 || tz2 <= 0)
         {
             float nearz = 1e-4f, farz = 5, nearside = 1e-5f, farside = 20.f;
@@ -297,12 +301,14 @@ static void DrawScreen(t_sdl *sdl)
             struct vertex i1 = Intersect(tx1,tz1,tx2,tz2, -nearside,nearz, -farside,farz);
             struct vertex i2 = Intersect(tx1,tz1,tx2,tz2,  nearside,nearz,  farside,farz);
             struct vertex org1 = {tx1,tz1}, org2 = {tx2,tz2};
+            orig1 = org1;
+            orig2 = org2;
             if(tz1 < nearz) { if(i1.y > 0) { tx1 = i1.x; tz1 = i1.y; } else { tx1 = i2.x; tz1 = i2.y; } }
             if(tz2 < nearz) { if(i1.y > 0) { tx2 = i1.x; tz2 = i1.y; } else { tx2 = i2.x; tz2 = i2.y; } }
             if(fabs(tx2-tx1) > fabs(tz2-tz1))
-                u0 = (tx1-org1.x) * (imageSrf->w - 1) / (org2.x-org1.x), u1 = (tx2-org1.x) * (imageSrf->w - 1) / (org2.x-org1.x);
+                u0 = (tx1-org1.x) * (imageSrf->w * 2 - 1) / (org2.x-org1.x), u1 = (tx2-org1.x) * (imageSrf->w * 2 - 1) / (org2.x-org1.x);
             else
-                u0 = (tz1-org1.y) * (imageSrf->w - 1) / (org2.y-org1.y), u1 = (tz2-org1.y) * (imageSrf->w - 1) / (org2.y-org1.y);
+                u0 = (tz1-org1.y) * (imageSrf->w * 2 - 1) / (org2.y-org1.y), u1 = (tz2-org1.y) * (imageSrf->w * 2 - 1) / (org2.y-org1.y);
         }
         /* Do perspective transformation */
         float xscale1 = (W*hfov) / (tz1), yscale1 = (H*vfov) / (tz1);    int x1 = W/2 + (int)(-tx1 * xscale1);
@@ -334,7 +340,9 @@ static void DrawScreen(t_sdl *sdl)
         struct Scaler nyb_int = Scaler_Init(x1, beginx, x2, ny1b, ny2b);
         for(int x = beginx; x <= endx; ++x)
         {
-            int txtx = (u0*((x2-x)*tz2) + u1*((x-x1)*tz1)) / ((x2-x)*tz2 + (x-x1)*tz1);
+            float txtx = (u0*((x2-x)*tz2) + u1*((x-x1)*tz1)) / ((x2-x)*tz2 + (x-x1)*tz1);
+            //if ((distance(sect->vertex[s].x, sect->vertex[s].y, sect->vertex[s + 1].x, sect->vertex[s + 1].y) * 75.0f > imageSrf->w * 2))
+             //   txtx  *= (distance(sect->vertex[s].x, sect->vertex[s].y, sect->vertex[s + 1].x, sect->vertex[s + 1].y) * 75.0f / (float)imageSrf->w);
             /* Calculate the Z coordinate for this point. (Only used for lighting.) */
             int z = ((x - x1) * (tz2-tz1) / (x2-x1) + tz1) * 8;
             /* Acquire the Y coordinates for our ceiling & floor for this X coordinate. Clamp them. */
@@ -346,13 +354,7 @@ static void DrawScreen(t_sdl *sdl)
             for(int y=ytop[x]; y<=ybottom[x]; ++y)
             {
                 if(y >= cya && y <= cyb) { y = cyb; continue; }
-                float hei;
-                if (sect->vertex[s].ceilz != 0)
-                    hei = y < cya ? yceil + sect->vertex[s].ceilz: yfloor;
-                else if (sect->vertex[s + 1].ceilz != 0)
-                    hei = y < cya ? yceil + sect->vertex[s + 1].ceilz: yfloor;
-                else
-                    hei = y < cya ? yceil: yfloor;
+                float hei = y < cya ? yceil: yfloor;
                 float mapx, mapz;
                 CeilingFloorScreenCoordinatesToMapCoordinates(hei, x, y,mapx, mapz);
                 unsigned tx = (mapx * 100), txtz = (mapz * 100);
@@ -360,7 +362,10 @@ static void DrawScreen(t_sdl *sdl)
                 int *floorPix = (int*)floorTexture->pixels;
                 int *surfacePix = (int*)surface->pixels;
                 int pel = floorPix[tx % floorTexture->w + (txtz % floorTexture->h) * floorTexture->w];
-                surfacePix[y * W + x] = getpixel(floorTexture, tx % floorTexture->w, txtz % floorTexture->h);
+                if (hei == yceil)
+                    surfacePix[y * W + x] = getpixel(ceilTexture, tx % ceilTexture->w, txtz % ceilTexture->h);
+                else
+                    surfacePix[y * W + x] = getpixel(floorTexture, tx % floorTexture->w, txtz % floorTexture->h);
             }
             /* Render ceiling: everything above this sector's ceiling height. */
             //vline(x, ytop[x], cya-1, 0xFF ,0x222222, 0xFF);
@@ -376,12 +381,12 @@ static void DrawScreen(t_sdl *sdl)
                 unsigned r1 = 0x010101 * (255-z), r2 = 0x040007 * (31-z/8);
                 //vline(x, cya, cnya-1, 0, x==x1||x==x2 ? 0 : r1, 0); // Between our and their ceiling
                 if (nya - 1 != ya)
-                    textLine(x, cya, cnya - 1, (struct Scaler)Scaler_Init(ya,cya,nya - 1, 0,imageSrf->h), txtx, surface, imageSrf);
+                    textLine(x, cya, cnya - 1, (struct Scaler)Scaler_Init(ya,cya,nya - 1, 0,imageSrf->h), txtx, sect, surface, imageSrf);
                 ytop[x] = clamp(max(cya, cnya), ytop[x], H-1);   // Shrink the remaining window below these ceilings
                 /* If our floor is lower than their floor, render bottom wall */
                 //vline(x, cnyb+1, cyb, 0, x==x1||x==x2 ? 0 : r2, 0); // Between their and our floor
                 if (yb - 1 !=  nyb)
-                    textLine(x, cnyb+1, cyb, (struct Scaler)Scaler_Init(nyb,cnyb,yb - 1, 0,imageSrf->h), txtx, surface, imageSrf);
+                    textLine(x, cnyb+1, cyb, (struct Scaler)Scaler_Init(nyb,cnyb,yb - 1, 0,imageSrf->h), txtx, sect, surface, imageSrf);
                 ybottom[x] = clamp(min(cyb, cnyb), 0, ybottom[x]); // Shrink the remaining window above these floors
             }
             else
@@ -391,7 +396,8 @@ static void DrawScreen(t_sdl *sdl)
                 //vline(x, cya, cyb, 0, x==x1||x==x2 ? 0 : r, 0);
                 //if (s != sect->npoints - 1)
                     //draw_texture_line(surface, imageSrf, x, 0, distance(sect->vertex[s].x, sect->vertex[s].y, sect->vertex[s + 1].x, sect->vertex[s + 1].y) , ya, yb);
-                    textLine(x, cya, cyb, (struct Scaler)Scaler_Init(ya,cya,yb, 0,imageSrf->h), txtx, surface, imageSrf);
+                    textLine(x, cya, cyb, (struct Scaler)Scaler_Init(ya,cya,yb, 0,imageSrf->h * 2), txtx, sect, surface, imageSrf);
+                    //filledLine(surface, imageSrf, x, wallx1, wallx2, ya, yb);
                     //if (s == 1)
                     //   printf("vx1:%f\nvx2:%f\nx1:%f\nx2:%f\n", vx1, vx2, wallx1, wallx2);
                 //else
@@ -400,6 +406,7 @@ static void DrawScreen(t_sdl *sdl)
             //  else{
             //      printf("normal yscale1:%f\n yscale2:%f\nya:%d\nyb:%d\n", yscale1, yscale2, ya, yb);
             //  }
+            //txtx  /= (distance(sect->vertex[s].x, sect->vertex[s].y, sect->vertex[s + 1].x, sect->vertex[s + 1].y) * 100 / imageSrf->w);
         }
         /* Schedule the neighboring sector for rendering within the window formed by this wall. */
         if(neighbor >= 0 && endx >= beginx && (head+MaxQueue+1-tail)%MaxQueue)
@@ -429,8 +436,9 @@ int main(int ac, char **av)
     if (init_sdl(sdl) == ERROR)
         exit(1);
     surface = SDL_CreateRGBSurface(0, W, H, 32, 0, 0, 0, 0);
-    imageSrf = load_img("textures/image.jpeg");
-    floorTexture = load_img("textures/floor.jpg");
+    imageSrf = load_img("textures/023.png");
+    floorTexture = load_img("textures/floor.jpeg");
+    ceilTexture = load_img("textures/ceil.jpeg");
     SDL_ShowCursor(SDL_DISABLE);
     SDL_SetRelativeMouseMode(SDL_TRUE);
     int wsad[4]={0,0,0,0}, ground=0, falling=1, moving=0, ducking=0;
@@ -536,6 +544,8 @@ int main(int ac, char **av)
                         case 'a': wsad[2] = ev.type==SDL_KEYDOWN; break;
                         case 'd': wsad[3] = ev.type==SDL_KEYDOWN; break;
                         case 'g': anglle += 0.01f; break;
+                        case 'h': sectors[player.sector].ceil += 2; break;
+                        case 'j': sectors[player.sector].ceil -= 2; break;
                         case SDLK_ESCAPE: goto done;
                         case SDLK_LCTRL: player.where.z += 3; break;
                         case 'r':     UnloadData(); ReloadData(); break;

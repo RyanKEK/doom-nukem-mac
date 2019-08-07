@@ -1,6 +1,6 @@
 #include "sdl_head.h"
 
-void    draw_texture_line(SDL_Surface *screen, SDL_Surface *image, int screenX, int xStart, int xEnd, int top, int bottom)
+void    filledLine(SDL_Surface *screen, SDL_Surface *image, int screenX, int xStart, int xEnd, int top, int bottom)
 {
     int *screenPix = (int*)screen->pixels;
     int *imagePix = (int*)image->pixels;
@@ -16,10 +16,11 @@ void    draw_texture_line(SDL_Surface *screen, SDL_Surface *image, int screenX, 
     while (top < bottom)
     {
         //if (top >= 0)
-        screenPix[(int)(screenX + top * screen->w)] = imagePix[x + (int)y * image->w];
+        screenPix[(int)(screenX + top * screen->w)] = imagePix[(screenX * 10) % image->w + (((int)y * 10) % image->h) * image->w];
         top++;
-        if (lineLength != 0)
-            y += (double)image->h / lineLength;
+        // if (lineLength != 0)s
+        //     y += (double)image->h / lineLength;
+        y++;
     }
 }
 
@@ -54,13 +55,13 @@ Uint32 getpixel(SDL_Surface *surface, int x, int y)
     }
 }
 
-static int Scaler_Next(struct Scaler* i)
+static float Scaler_Next(struct Scaler* i)
 {
     for(i->cache += i->fd; i->cache >= i->ca; i->cache -= i->ca) i->result += i->bop;
     return i->result;
 }
 
-void textLine(int x, int y1,int y2, struct Scaler ty,unsigned txtx, SDL_Surface *surface, SDL_Surface *image)
+void textLine(int x, int y1,int y2, struct Scaler ty,unsigned txtx, struct sector *sect, SDL_Surface *surface, SDL_Surface *image)
 {
     int *pix = (int*) surface->pixels;
     int *imagePix = (int*)image->pixels;
@@ -69,9 +70,12 @@ void textLine(int x, int y1,int y2, struct Scaler ty,unsigned txtx, SDL_Surface 
     pix += y1 * W + x;
     for(int y = y1; y <= y2; ++y)
     {
-        unsigned txty = Scaler_Next(&ty);
-        //*pix = imagePix[txtx % image->w + (txty % image->h) * image->w];
-        *pix = getpixel(image, txtx % image->w, txty % image->h);
+        float txty = Scaler_Next(&ty);
+        //if (fabsf(sect->floor - sect->ceil) * 10.0f > image->h)
+            //txty *= fabsf(sect->floor - sect->ceil) * 1 / (float)image->h;
+        //txty *= 200.0f;
+        //txty += image->h;
+        *pix = getpixel(image, txtx % image->w, (int)txty % image->h);
         pix += W;
     }
 }

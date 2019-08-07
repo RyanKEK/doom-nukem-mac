@@ -42,6 +42,14 @@ typedef	struct		s_sdl
 	SDL_Renderer	*ren;
 }					t_sdl;
 
+struct sector
+{
+    float floor, ceil;
+    struct vertex { float x,y,ceilz, floorz; } *vertex; // Each vertex has an x and y coordinate
+    signed char *neighbors;           // Each edge may have a corresponding neighboring sector
+    unsigned npoints;                 // How many vertexes there are
+};
+
 struct Scaler { int result, bop, fd, ca, cache; };
 
 //					CREATE
@@ -60,11 +68,11 @@ SDL_Surface			*load_img(const char *file_name);
 
 //					TEXTURE
 SDL_Texture			*load_texture(const char *file_name, SDL_Renderer *ren);
-void    draw_texture_line(SDL_Surface *screen, SDL_Surface *image, int screenX, int xStart, int xEnd, int top, int bottom);
 SDL_Texture			*texture_from_surf(SDL_Surface *surf, SDL_Renderer *ren);
 SDL_Texture			*new_fresh_texture(SDL_Renderer *ren, int width, int height);
-void textLine(int x, int y1,int y2, struct Scaler ty,unsigned txtx, SDL_Surface *surface, SDL_Surface *image);
+void				textLine(int x, int y1,int y2, struct Scaler ty,unsigned txtx, struct sector *sect, SDL_Surface *surface, SDL_Surface *image);
 Uint32              getpixel(SDL_Surface *surface, int x, int y);
+void				filledLine(SDL_Surface *screen, SDL_Surface *image, int screenX, int xStart, int xEnd, int top, int bottom);
 
 //					RENDER
 void				sdl_render(SDL_Renderer *ren, SDL_Texture *tex, SDL_Rect *src, SDL_Rect *dst);
