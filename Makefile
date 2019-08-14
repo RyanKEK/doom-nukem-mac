@@ -1,6 +1,6 @@
 NAME := doom-nukem
 
-SRCS	:= sdl_worker.c sdl_create.c sdl_exit.c sdl_texture.c img_loader.c ttf_worker.c main3.c line.c
+SRCS	:= sdl_worker.c sdl_create.c sdl_exit.c sdl_texture.c img_loader.c ttf_worker.c main3.c line.c textures.c
 
 DIR_SRC := $(CURDIR)/src
 DIR_OBJ := $(CURDIR)/obj
@@ -19,7 +19,7 @@ SDL_INCL =	-I $(CURDIR)/frameworks/SDL2.framework/Headers/ \
 
 FLAG_W = -Wall -Wextra -Werror
 
-FLAG_W = 
+FLAG_W = -O2
 
 FLAG_F = -F frameworks
 

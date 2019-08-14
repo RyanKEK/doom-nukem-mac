@@ -77,8 +77,11 @@ void    line(SDL_Surface *surface, t_point start, t_point end, int color)
     {
         while (start.x <= end.x)
         {
-            pix[(int)intersecY + W * start.x] = color;
-            pix[(int)intersecY - 1 + W * start.x] = color;
+            if (start.x >= 0 && start.x < H && intersecY >= 0 && intersecY < W)
+            {
+                pix[(int)intersecY + W * start.x] = color;
+                pix[(int)intersecY - 1 + W * start.x] = color;
+            }
             intersecY += gradient;
             start.x++;
         }
@@ -87,10 +90,11 @@ void    line(SDL_Surface *surface, t_point start, t_point end, int color)
     {
         while (start.x <= end.x)
         {
-            // draw_pixel(renderer, start.x, (int)intersecY, rfNumberPart(intersecY), color);
-            // draw_pixel(renderer, start.x, (int)intersecY - 1, fNumberPart(intersecY), color);
-            pix[start.x + W * (int)intersecY] = color;
-            pix[start.x + (W * (int)intersecY - 1)] = color;
+            if (start.x >= 0 && start.x < W && intersecY >= 0 && intersecY < H)
+            {
+                pix[start.x + W * (int)intersecY] = color;
+                pix[start.x + (W * (int)intersecY - 1)] = color;
+            }
             intersecY += gradient;
             start.x++;
         }

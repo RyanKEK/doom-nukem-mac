@@ -37,7 +37,7 @@ SDL_Surface				*load_optimize_bmp(const char *file_name)
 SDL_Surface				*load_img(const char *file_name)
 {
 	SDL_Surface			*surf;
-
+	IMG_Init(IMG_INIT_PNG);
 	if (ft_strstr(file_name, ".bmp"))
 		surf = load_optimize_bmp(file_name);
 	else

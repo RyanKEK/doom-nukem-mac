@@ -32,6 +32,7 @@ static struct player
 #define min(a,b)             (((a) < (b)) ? (a) : (b)) // min: Choose smaller of two scalars.
 #define max(a,b)             (((a) > (b)) ? (a) : (b)) // max: Choose greater of two scalars.
 #define clamp(a, mi,ma)      min(max(a,mi),ma)
+#define Yaw(y,z) (y + z*player.yaw)
 #define vxs(x0,y0, x1,y1)    ((x0)*(y1) - (x1)*(y0))   // vxs: Vector cross product
 // Overlap:  Determine whether the two number ranges overlap.
 #define Overlap(a0,a1,b0,b1) (min(a0,a1) <= max(b0,b1) && min(b0,b1) <= max(a0,a1))
@@ -59,6 +60,7 @@ char *map;
 SDL_Surface *imageSrf;
 SDL_Surface *floorTexture;
 SDL_Surface *ceilTexture;
+SDL_Surface *sprite;
 static void ReloadData()
 {
     FILE* fp = fopen(map, "rt");
@@ -251,11 +253,81 @@ float         find_max_ceiling_height(const struct sector *const sector)
     return (h);
 }
 
+int scaleH = 34;
+
+void putpixel(SDL_Surface *surface, int x, int y, Uint32 pixel)
+{
+    int bpp = surface->format->BytesPerPixel;
+    /* Here p is the address to the pixel we want to set */
+    Uint8 *p = (Uint8 *)surface->pixels + y * surface->pitch + x * bpp;
+
+    switch(bpp) {
+    case 1:
+        *p = pixel;
+        break;
+
+    case 2:
+        *(Uint16 *)p = pixel;
+        break;
+
+    case 3:
+        if(SDL_BYTEORDER == SDL_BIG_ENDIAN) {
+            p[0] = (pixel >> 16) & 0xff;
+            p[1] = (pixel >> 8) & 0xff;
+            p[2] = pixel & 0xff;
+        } else {
+            p[0] = pixel & 0xff;
+            p[1] = (pixel >> 8) & 0xff;
+            p[2] = (pixel >> 16) & 0xff;
+        }
+        break;
+
+    case 4:
+        *(Uint32 *)p = pixel;
+        break;
+    }
+}
+
+void    draw_image(SDL_Surface *screen, SDL_Surface *image, int x, int y, int width, int height)
+{
+    int i = -1;
+    int j;
+    float tx;
+    float ty = 0;
+    int *pix = (int*)screen->pixels;
+    unsigned char r, g, b, a;
+    while (++i < height)
+    {
+        j = -1;
+        tx = 0;
+        while (++j < width)
+        {
+            SDL_GetRGBA(getpixel(image, (int)tx, (int)ty), image->format, &r, &g, &b, &a);
+            if (j + x < W && j + x > 0 && i + y < H && i + y > 0 && a != 0)
+                putpixel(surface, j + x, i + y, getpixel(image, (int)tx, (int)ty));
+            tx += (float)image->w / width;
+        }
+        ty += (float)image->h / height;
+    }
+}
+
+void    draw_sprite(int x, int y)
+{
+        double vx = x - player.where.x, vy = y- player.where.y;
+        double pcos = player.anglecos, psin = player.anglesin;
+        double tx = vx * psin - vy * pcos,  tz = vx * pcos + vy * psin;
+        if (tz <= 0)
+            return ;
+        float xscale = (W*hfov) / (tz), yscale = (H*vfov) / (tz);    int x1 = W/2 + (int)(-tx * xscale);
+        int y1 = H/2 + (int)(-Yaw(1, tz) * yscale);
+        float dist = sqrtf(vx * vx + vy * vy);
+        draw_image(surface, sprite, x1, y1, 1000 / dist, 1000 / dist);
+}
+
+float del = 5;
+
 static void DrawScreen(t_sdl *sdl)
 {
-    // player.where.y = 8.658625;
-    // player.where.x = 0.119110;
-    // player.angle = anglle;
     enum { MaxQueue = 32 };  // maximum number of pending portal renders
     struct item { int sectorno,sx1,sx2; } queue[MaxQueue], *head=queue, *tail=queue;
     int ytop[W]={0}, ybottom[W], renderedsectors[NumSectors];
@@ -293,7 +365,12 @@ static void DrawScreen(t_sdl *sdl)
             continue;
         struct vertex orig1, orig2;
         /* If it's partially behind the player, clip it against player's view frustrum */
-        int u0 = 0, u1 = imageSrf->w * 2 - 1;
+        float scaleL;
+        if(fabsf(sect->vertex[s].x - sect->vertex[s + 1].x) > fabsf(sect->vertex[s].y - sect->vertex[s + 1].y))
+            scaleL = fabsf(sect->vertex[s].x - sect->vertex[s + 1].x) / del;
+        else
+            scaleL = fabsf(sect->vertex[s].y - sect->vertex[s + 1].y) / del;
+        int u0 = 0, u1 = imageSrf->w * scaleL - 1;
         if(tz1 <= 0 || tz2 <= 0)
         {
             float nearz = 1e-4f, farz = 5, nearside = 1e-5f, farside = 20.f;
@@ -306,9 +383,9 @@ static void DrawScreen(t_sdl *sdl)
             if(tz1 < nearz) { if(i1.y > 0) { tx1 = i1.x; tz1 = i1.y; } else { tx1 = i2.x; tz1 = i2.y; } }
             if(tz2 < nearz) { if(i1.y > 0) { tx2 = i1.x; tz2 = i1.y; } else { tx2 = i2.x; tz2 = i2.y; } }
             if(fabs(tx2-tx1) > fabs(tz2-tz1))
-                u0 = (tx1-org1.x) * (imageSrf->w * 2 - 1) / (org2.x-org1.x), u1 = (tx2-org1.x) * (imageSrf->w * 2 - 1) / (org2.x-org1.x);
+                u0 = (tx1-org1.x) * (imageSrf->w * scaleL - 1) / (org2.x-org1.x), u1 = (tx2-org1.x) * (imageSrf->w * scaleL - 1) / (org2.x-org1.x);
             else
-                u0 = (tz1-org1.y) * (imageSrf->w * 2 - 1) / (org2.y-org1.y), u1 = (tz2-org1.y) * (imageSrf->w * 2 - 1) / (org2.y-org1.y);
+                u0 = (tz1-org1.y) * (imageSrf->w * scaleL - 1) / (org2.y-org1.y), u1 = (tz2-org1.y) * (imageSrf->w * scaleL - 1) / (org2.y-org1.y);
         }
         /* Do perspective transformation */
         float xscale1 = (W*hfov) / (tz1), yscale1 = (H*vfov) / (tz1);    int x1 = W/2 + (int)(-tx1 * xscale1);
@@ -326,7 +403,6 @@ static void DrawScreen(t_sdl *sdl)
             nyfloor = sectors[neighbor].floor - player.where.z;
         }
         /* Project our ceiling & floor heights into screen coordinates (Y coordinate) */
-        #define Yaw(y,z) (y + z*player.yaw)
         int y1a  = H/2 + (int)(-Yaw(yceil + sect->vertex[s].ceilz, tz1) * yscale1),  y1b = H/2 + (int)(-Yaw(yfloor + sect->vertex[s].floorz, tz1) * yscale1);
         int y2a  = H/2 + (int)(-Yaw(yceil + sect->vertex[s + 1].ceilz, tz2) * yscale2),  y2b = H/2 + (int)(-Yaw(yfloor + sect->vertex[s + 1].floorz, tz2) * yscale2);
         /* The same for the neighboring sector */
@@ -354,7 +430,7 @@ static void DrawScreen(t_sdl *sdl)
             for(int y=ytop[x]; y<=ybottom[x]; ++y)
             {
                 if(y >= cya && y <= cyb) { y = cyb; continue; }
-                float hei = y < cya ? yceil: yfloor;
+                float hei = y < cya ? yceil : yfloor;
                 float mapx, mapz;
                 CeilingFloorScreenCoordinatesToMapCoordinates(hei, x, y,mapx, mapz);
                 unsigned tx = (mapx * 100), txtz = (mapz * 100);
@@ -396,7 +472,7 @@ static void DrawScreen(t_sdl *sdl)
                 //vline(x, cya, cyb, 0, x==x1||x==x2 ? 0 : r, 0);
                 //if (s != sect->npoints - 1)
                     //draw_texture_line(surface, imageSrf, x, 0, distance(sect->vertex[s].x, sect->vertex[s].y, sect->vertex[s + 1].x, sect->vertex[s + 1].y) , ya, yb);
-                    textLine(x, cya, cyb, (struct Scaler)Scaler_Init(ya,cya,yb, 0,imageSrf->h * 2), txtx, sect, surface, imageSrf);
+                    textLine(x, cya, cyb, (struct Scaler)Scaler_Init(ya,cya,yb, 0, fabsf(sect->floor - sect->ceil) * scaleH), txtx, sect, surface, imageSrf);
                     //filledLine(surface, imageSrf, x, wallx1, wallx2, ya, yb);
                     //if (s == 1)
                     //   printf("vx1:%f\nvx2:%f\nx1:%f\nx2:%f\n", vx1, vx2, wallx1, wallx2);
@@ -435,10 +511,14 @@ int main(int ac, char **av)
     sdl = new_t_sdl(W, H, "test");
     if (init_sdl(sdl) == ERROR)
         exit(1);
+    if (SDL_BYTEORDER != SDL_BIG_ENDIAN)
+        printf("sdsd\n");
     surface = SDL_CreateRGBSurface(0, W, H, 32, 0, 0, 0, 0);
-    imageSrf = load_img("textures/023.png");
+    imageSrf = load_img("textures/dead_body.jpg");
     floorTexture = load_img("textures/floor.jpeg");
     ceilTexture = load_img("textures/ceil.jpeg");
+    sprite = load_img("textures/023.png");
+    SDL_SetSurfaceBlendMode(sprite, SDL_BLENDMODE_BLEND);
     SDL_ShowCursor(SDL_DISABLE);
     SDL_SetRelativeMouseMode(SDL_TRUE);
     int wsad[4]={0,0,0,0}, ground=0, falling=1, moving=0, ducking=0;
@@ -447,7 +527,9 @@ int main(int ac, char **av)
     //SDL_Texture *imgtxt = SDL_CreateTextureFromSurface(sdl->ren, imageSrf);
     for(;;)
     {
+        printf("%f\n", player.yaw);
         DrawScreen(sdl);
+        draw_sprite(10, 10);
         //quad(surface, player.where.x * scale, player.where.y * scale, 10, 10, 0x0000FF);
         for (int i = 0; i < NumSectors; i++)
         {
@@ -546,6 +628,10 @@ int main(int ac, char **av)
                         case 'g': anglle += 0.01f; break;
                         case 'h': sectors[player.sector].ceil += 2; break;
                         case 'j': sectors[player.sector].ceil -= 2; break;
+                        case 'c': scaleH++; break;
+                        case 'v': scaleH--; break;
+                        case 'z': del += 0.2; break;
+                        case 'x': del /= 1.2; break;
                         case SDLK_ESCAPE: goto done;
                         case SDLK_LCTRL: player.where.z += 3; break;
                         case 'r':     UnloadData(); ReloadData(); break;
