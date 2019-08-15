@@ -50,6 +50,13 @@ struct sector
     unsigned npoints;                 // How many vertexes there are
 };
 
+typedef struct      s_anim
+{
+    SDL_Surface *frames[10];
+    float frameCount;
+}                   t_anim;
+
+
 struct Scaler { int result, bop, fd, ca, cache; };
 
 //					CREATE
@@ -88,5 +95,10 @@ void				free_t_sdl(t_sdl *s);
 void				close_t_sdl(t_sdl *s);
 void				line(SDL_Surface *surface, t_point start, t_point end, int color);
 void    			quad(SDL_Surface *surface, int x, int y, int w, int h, int color);
+
+//                  SPRITES
+void                draw_image(SDL_Surface *screen, SDL_Surface *image, int x, int y, int width, int height);
+void                draw_sprite(int x, int y, SDL_Surface *sprite);
+void                draw_weapon_frame(SDL_Surface *screen, t_anim animation);
 
 #endif	

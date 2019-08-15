@@ -60,7 +60,7 @@ char *map;
 SDL_Surface *imageSrf;
 SDL_Surface *floorTexture;
 SDL_Surface *ceilTexture;
-SDL_Surface *sprite;
+
 static void ReloadData()
 {
     FILE* fp = fopen(map, "rt");
@@ -288,6 +288,24 @@ void putpixel(SDL_Surface *surface, int x, int y, Uint32 pixel)
     }
 }
 
+void    draw_crosshair()
+{
+    t_point start1;
+    t_point start2;
+    t_point end1;
+    t_point end2;
+    start1.x = W / 2 - 30;
+    start1.y = H / 2;
+    end1.x = W / 2 + 30;
+    end1.y = H / 2;
+    start2.x = W / 2;
+    start2.y = H / 2 - 30;
+    end2.x = W / 2;
+    end2.y = H / 2 + 30;
+    line(surface, start1, end1, 0xffffffff);
+    line(surface, start2, end2, 0xffffffff);
+}
+
 void    draw_image(SDL_Surface *screen, SDL_Surface *image, int x, int y, int width, int height)
 {
     int i = -1;
@@ -311,17 +329,40 @@ void    draw_image(SDL_Surface *screen, SDL_Surface *image, int x, int y, int wi
     }
 }
 
-void    draw_sprite(int x, int y)
+void    draw_sprite(int x, int y, SDL_Surface *sprite)
 {
-        double vx = x - player.where.x, vy = y- player.where.y;
+        double vx = x - player.where.x, vy = y - player.where.y;
         double pcos = player.anglecos, psin = player.anglesin;
         double tx = vx * psin - vy * pcos,  tz = vx * pcos + vy * psin;
         if (tz <= 0)
             return ;
-        float xscale = (W*hfov) / (tz), yscale = (H*vfov) / (tz);    int x1 = W/2 + (int)(-tx * xscale);
+        float xscale = (W*hfov) / (tz), yscale = (H*vfov) / (tz);
+        int x1 = W/2 + (int)(-tx * xscale);
         int y1 = H/2 + (int)(-Yaw(1, tz) * yscale);
         float dist = sqrtf(vx * vx + vy * vy);
         draw_image(surface, sprite, x1, y1, 1000 / dist, 1000 / dist);
+}
+
+void    draw_enemy_frame(int x, int y, t_anim enemy)
+{
+    draw_sprite(x, y, enemy.frames[(int)enemy.frameCount]);
+}
+
+int enemy_hit(int x, int y)
+{
+        double vx = x - player.where.x, vy = y - player.where.y;
+        double pcos = player.anglecos, psin = player.anglesin;
+        double tx = vx * psin - vy * pcos,  tz = vx * pcos + vy * psin;
+        if (tz <= 0)
+            return 0;
+        float xscale = (W*hfov) / (tz), yscale = (H*vfov) / (tz);
+        int x1 = W/2 + (int)(-tx * xscale);
+        int y1 = H/2 + (int)(-Yaw(1, tz) * yscale);
+        float dist = sqrtf(vx * vx + vy * vy);
+        if (x1 < W / 2 && x1 + 1000 / dist > W / 2)
+            return (1);
+        else
+            return (0);
 }
 
 float del = 5;
@@ -495,6 +536,10 @@ static void DrawScreen(t_sdl *sdl)
     } while(head != tail); // render any other queued sectors
 }
 
+int is_shooting = 0;
+int enemy_damaged = 0;
+
+
 int main(int ac, char **av)
 {
     if (ac != 2){
@@ -504,6 +549,30 @@ int main(int ac, char **av)
     map = av[1];
     t_sdl *sdl;
     SDL_Texture *text;
+    t_anim pistol;
+    t_anim enemy;
+    enemy.frameCount = 0;
+    pistol.frameCount = 0;
+    pistol.frames[0] = load_img("sprites/pistol/frame2.png");
+    pistol.frames[1] = load_img("sprites/pistol/frame2.png");
+    pistol.frames[2] = load_img("sprites/pistol/frame3.png");
+    pistol.frames[3] = load_img("sprites/pistol/frame3.png");
+    pistol.frames[4] = load_img("sprites/pistol/frame4.png");
+    pistol.frames[5] = load_img("sprites/pistol/frame4.png");
+    pistol.frames[6] = load_img("sprites/pistol/frame6.png");
+    pistol.frames[7] = load_img("sprites/pistol/frame4.png");
+    pistol.frames[8] = load_img("sprites/pistol/frame4.png");
+    pistol.frames[9] = load_img("sprites/pistol/frame4.png");
+    enemy.frames[0] = load_img("sprites/enemy/enemy.png");
+    enemy.frames[1] = load_img("sprites/enemy/damaged_enemy.png");
+    enemy.frames[2] = load_img("sprites/enemy/damaged_enemy.png");
+    enemy.frames[3] = load_img("sprites/enemy/damaged_enemy.png");
+    enemy.frames[4] = load_img("sprites/enemy/damaged_enemy.png");
+    enemy.frames[5] = load_img("sprites/enemy/damaged_enemy.png");
+    enemy.frames[6] = load_img("sprites/enemy/damaged_enemy.png");
+    enemy.frames[7] = load_img("sprites/enemy/damaged_enemy.png");
+    enemy.frames[8] = load_img("sprites/enemy/damaged_enemy.png");
+    enemy.frames[9] = load_img("sprites/enemy/damaged_enemy.png");
     if (!ft_strcmp(av[1], "map-clear.txt"))
         LoadDataRaw();
     else
@@ -511,25 +580,35 @@ int main(int ac, char **av)
     sdl = new_t_sdl(W, H, "test");
     if (init_sdl(sdl) == ERROR)
         exit(1);
-    if (SDL_BYTEORDER != SDL_BIG_ENDIAN)
-        printf("sdsd\n");
     surface = SDL_CreateRGBSurface(0, W, H, 32, 0, 0, 0, 0);
     imageSrf = load_img("textures/dead_body.jpg");
     floorTexture = load_img("textures/floor.jpeg");
     ceilTexture = load_img("textures/ceil.jpeg");
-    sprite = load_img("textures/023.png");
-    SDL_SetSurfaceBlendMode(sprite, SDL_BLENDMODE_BLEND);
+
     SDL_ShowCursor(SDL_DISABLE);
     SDL_SetRelativeMouseMode(SDL_TRUE);
     int wsad[4]={0,0,0,0}, ground=0, falling=1, moving=0, ducking=0;
     float yaw = 0;
-    SDL_Texture *recttext = load_texture("023.png", sdl->ren);
+    SDL_Texture *recttext = load_texture("sprites/enemy/enemy.png", sdl->ren);
     //SDL_Texture *imgtxt = SDL_CreateTextureFromSurface(sdl->ren, imageSrf);
     for(;;)
     {
-        printf("%f\n", player.yaw);
         DrawScreen(sdl);
-        draw_sprite(10, 10);
+        if (is_shooting)
+            pistol.frameCount += 0.7;
+        if (pistol.frameCount >= 9.0){
+            is_shooting = 0;
+            pistol.frameCount = 0;
+        }
+        if (enemy_damaged)
+            enemy.frameCount++;
+        if (enemy.frameCount == 9){
+            enemy_damaged = 0;
+            enemy.frameCount = 0;
+        }
+        draw_enemy_frame(10, 10, enemy);
+        draw_weapon_frame(surface, pistol);
+        draw_crosshair();
         //quad(surface, player.where.x * scale, player.where.y * scale, 10, 10, 0x0000FF);
         for (int i = 0; i < NumSectors; i++)
         {
@@ -642,6 +721,18 @@ int main(int ac, char **av)
                         default: break;
                     }
                     break;
+                case SDL_MOUSEBUTTONDOWN:
+                    if (is_shooting == 0){
+                        is_shooting = 1;
+                        if (enemy_hit(10, 10))
+                            enemy_damaged = 1;
+                    }
+                    else if (pistol.frameCount > 4){
+                        pistol.frameCount = 0;
+                        if (enemy_hit(10, 10))
+                            enemy_damaged = 1;
+                    }
+                    break ;
                 case SDL_QUIT: goto done;
             }
 

@@ -1,6 +1,6 @@
 NAME := doom-nukem
 
-SRCS	:= sdl_worker.c sdl_create.c sdl_exit.c sdl_texture.c img_loader.c ttf_worker.c main3.c line.c textures.c
+SRCS	:= sdl_worker.c sdl_create.c sdl_exit.c sdl_texture.c img_loader.c ttf_worker.c main3.c line.c textures.c sprites.c animations.c
 
 DIR_SRC := $(CURDIR)/src
 DIR_OBJ := $(CURDIR)/obj

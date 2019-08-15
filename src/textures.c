@@ -74,7 +74,7 @@ void textLine(int x, int y1,int y2, struct Scaler ty,unsigned txtx, struct secto
         //if (fabsf(sect->floor - sect->ceil) * 10.0f > image->h)
             //txty *= fabsf(sect->floor - sect->ceil) * 1 / (float)image->h;
         //txty *= 200.0f;
-        //txty += image->h;
+        //txty += image->h; 
         *pix = getpixel(image, txtx % image->w, (int)txty % image->h);
         pix += W;
     }
