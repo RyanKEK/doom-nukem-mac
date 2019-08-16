@@ -26,6 +26,19 @@ static struct player
     unsigned sector;                        // Which sector the player is currently in
 } player;
 
+typedef struct  s_point3D
+{
+    float x;
+    float y;
+    float z;
+}               t_point3D;
+
+typedef struct  s_point2D
+{
+    float x;
+    float y;
+}               t_point2D;
+
 // Utility functions. Because C doesn't have templates,
 // we use the slightly less safe preprocessor macros to
 // implement these functions that work with multiple types.
@@ -143,6 +156,8 @@ static void LoadData()
     fclose(fp);
     free(vert);
 }
+
+float zBuffer[H][W] = {0};
 
 static void LoadDataRaw()
 {
@@ -329,16 +344,28 @@ void    draw_image(SDL_Surface *screen, SDL_Surface *image, int x, int y, int wi
     }
 }
 
+t_point   projectPoint(float x, float y, float z)
+{
+        t_point res;
+        float vx = x - player.where.x, vy = y - player.where.y;
+        float pcos = player.anglecos, psin = player.anglesin;
+        float tx = vx * psin - vy * pcos,  tz = vx * pcos + vy * psin;
+        float xscale = (W*hfov) / (tz), yscale = (H*vfov) / (tz);
+        res.x = W/2 + (int)(-tx * xscale);
+        res.y = H/2 + (int)(-Yaw(z - player.where.z, tz) * yscale);
+        return (res);
+}
+
 void    draw_sprite(int x, int y, SDL_Surface *sprite)
 {
-        double vx = x - player.where.x, vy = y - player.where.y;
-        double pcos = player.anglecos, psin = player.anglesin;
-        double tx = vx * psin - vy * pcos,  tz = vx * pcos + vy * psin;
+        float vx = x - player.where.x, vy = y - player.where.y;
+        float pcos = player.anglecos, psin = player.anglesin;
+        float tx = vx * psin - vy * pcos,  tz = vx * pcos + vy * psin;
         if (tz <= 0)
             return ;
         float xscale = (W*hfov) / (tz), yscale = (H*vfov) / (tz);
         int x1 = W/2 + (int)(-tx * xscale);
-        int y1 = H/2 + (int)(-Yaw(1, tz) * yscale);
+        int y1 = H/2 + (int)(-Yaw(10 - player.where.z, tz) * yscale);
         float dist = sqrtf(vx * vx + vy * vy);
         draw_image(surface, sprite, x1, y1, 1000 / dist, 1000 / dist);
 }
@@ -366,6 +393,22 @@ int enemy_hit(int x, int y)
 }
 
 float del = 5;
+
+void    draw_quad(SDL_Surface *screen, t_point3D points[4], int color)
+{
+    t_point start;
+    t_point end;
+    int i = -1;
+    while (++i < 3)
+    {
+        start = projectPoint(points[i].x, points[i].y, points[i].z);
+        end = projectPoint(points[i + 1].x, points[i + 1].y, points[i + 1].z);
+        line(screen, start, end, color);
+    }
+    start = projectPoint(points[i].x, points[i].y, points[i].z);
+    end = projectPoint(points[0].x, points[0].y, points[0].z);
+    line(screen, start, end, color);
+}
 
 static void DrawScreen(t_sdl *sdl)
 {
@@ -581,7 +624,7 @@ int main(int ac, char **av)
     if (init_sdl(sdl) == ERROR)
         exit(1);
     surface = SDL_CreateRGBSurface(0, W, H, 32, 0, 0, 0, 0);
-    imageSrf = load_img("textures/dead_body.jpg");
+    imageSrf = load_img("textures/pent.jpg");
     floorTexture = load_img("textures/floor.jpeg");
     ceilTexture = load_img("textures/ceil.jpeg");
 
@@ -591,8 +634,16 @@ int main(int ac, char **av)
     float yaw = 0;
     SDL_Texture *recttext = load_texture("sprites/enemy/enemy.png", sdl->ren);
     //SDL_Texture *imgtxt = SDL_CreateTextureFromSurface(sdl->ren, imageSrf);
+    Uint32 startclock = 0;
+    Uint32 deltaclock = 0;
+    Uint32 currentFPS = 0;
+    startclock = SDL_GetTicks();
     for(;;)
     {
+        deltaclock = SDL_GetTicks() - startclock;
+        startclock = SDL_GetTicks();
+        if (deltaclock != 0)
+            printf("FPS: %d\n", 1000 / deltaclock);
         DrawScreen(sdl);
         if (is_shooting)
             pistol.frameCount += 0.7;
@@ -609,7 +660,16 @@ int main(int ac, char **av)
         draw_enemy_frame(10, 10, enemy);
         draw_weapon_frame(surface, pistol);
         draw_crosshair();
-        //quad(surface, player.where.x * scale, player.where.y * scale, 10, 10, 0x0000FF);
+       
+        //3D CUBE
+        // t_point3D quad[4]= {{5, 5, 1}, {5, 7, 1}, {5, 7, 5}, {5, 5, 5}};
+        // draw_quad(surface, quad, 0xfffffff);
+        // t_point3D quad1[4]= {{5, 5, 1}, {7, 5, 1}, {7, 5, 5}, {5, 5, 5}};
+        // draw_quad(surface, quad1, 0xfffffff);
+        // t_point3D quad2[4]= {{7, 5, 1}, {7, 7, 1}, {7, 7, 5}, {7, 5, 5}};
+        // draw_quad(surface, quad2, 0xfffffff);
+        // t_point3D quad3[4]= {{5, 7, 1}, {7, 7, 1}, {7, 7, 5}, {5, 7, 5}};
+        // draw_quad(surface, quad3, 0xfffffff);
         for (int i = 0; i < NumSectors; i++)
         {
             for (int j = 0; j < sectors[i].npoints; j++)
@@ -712,10 +772,10 @@ int main(int ac, char **av)
                         case 'z': del += 0.2; break;
                         case 'x': del /= 1.2; break;
                         case SDLK_ESCAPE: goto done;
-                        case SDLK_LCTRL: player.where.z += 3; break;
+                        case 'q': if (player.velocity.z < 3) player.velocity.z += 0.3; printf("FLY\n"); break;
                         case 'r':     UnloadData(); ReloadData(); break;
                         case ' ': /* jump */
-                            if(ground) { player.velocity.z += 0.5; falling = 1; }
+                            if(ground) { player.velocity.z += 0.5f; falling = 1; }
                             break;
                         case SDLK_RCTRL: ducking = ev.type==SDL_KEYDOWN; falling=1; break;
                         default: break;
@@ -742,7 +802,7 @@ int main(int ac, char **av)
         y = -y;
         player.angle += x * 0.01;
         yaw          = clamp(yaw - y * 0.05f, -5, 5);
-        player.yaw   = yaw - player.velocity.z*0.5f;
+        player.yaw   = yaw /*- player.velocity.z*0.5f*/;
         MovePlayer(0,0);
 
         float move_vec[2] = {0.f, 0.f};
